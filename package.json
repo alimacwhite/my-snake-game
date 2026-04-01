@@ -1,0 +1,17 @@
+{
+  "name": "my-snake-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "worker:settlement": "node src/workers/settlementWorker.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "stripe": "^18.0.0"
+  }
+}

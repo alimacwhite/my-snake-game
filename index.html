@@ -6,6 +6,7 @@
     <title>Simple Snake Game</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://js.stripe.com/v3"></script>
     <style>
         /* Use Inter font */
         body {
@@ -54,6 +55,24 @@
         <button id="pauseButton" class="hidden mt-3 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-5 rounded-lg text-base transition-colors shadow">
             Pause
         </button>
+        <button id="joinPaidButton" class="mt-3 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-5 rounded-lg text-base transition-colors shadow">
+            Join Paid Event ($0.50)
+        </button>
+
+
+
+        <div id="paymentModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 p-4">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-xl text-left w-full max-w-sm">
+                <h3 class="text-2xl font-bold mb-2 text-amber-300">Paid Tournament Entry</h3>
+                <p class="text-sm text-gray-300 mb-4">Secure payment via Stripe. Entry unlocks ranked paid room access only.</p>
+                <div id="card-element" class="bg-white text-black rounded p-3 mb-3"></div>
+                <p id="paymentStatus" class="text-sm text-gray-300 mb-4"></p>
+                <div class="flex gap-2 justify-end">
+                    <button id="cancelPaymentButton" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded">Cancel</button>
+                    <button id="confirmPaymentButton" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded">Pay $0.50</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Instructions -->
         <div class="mt-6 text-gray-400">
@@ -75,6 +94,11 @@
             const startButton = document.getElementById('startButton');
             const pauseButton = document.getElementById('pauseButton');
             const restartButton = document.getElementById('restartButton');
+            const joinPaidButton = document.getElementById('joinPaidButton');
+            const paymentModal = document.getElementById('paymentModal');
+            const confirmPaymentButton = document.getElementById('confirmPaymentButton');
+            const cancelPaymentButton = document.getElementById('cancelPaymentButton');
+            const paymentStatus = document.getElementById('paymentStatus');
             const messageBox = document.getElementById('messageBox');
             const messageTitle = document.getElementById('messageTitle');
             const messageText = document.getElementById('messageText');
@@ -93,6 +117,80 @@
             let highScore = Number(localStorage.getItem(storageKey) || 0);
             let changingDirection = false; // Prevent rapid 180-degree turns
             highScoreEl.textContent = highScore;
+
+
+
+            // Stripe Elements
+            const STRIPE_PUBLISHABLE_KEY = 'pk_test_REPLACE_ME';
+            const PAID_EVENT_ID = '11111111-1111-1111-1111-111111111111';
+            const stripe = window.Stripe ? Stripe(STRIPE_PUBLISHABLE_KEY) : null;
+            let cardElement;
+
+            function openPaymentModal() {
+                if (!stripe) {
+                    paymentStatus.textContent = 'Stripe failed to load. Please refresh and try again.';
+                    paymentModal.classList.remove('hidden');
+                    return;
+                }
+
+                if (!cardElement) {
+                    const elements = stripe.elements();
+                    cardElement = elements.create('card');
+                    cardElement.mount('#card-element');
+                }
+                paymentStatus.textContent = '';
+                paymentModal.classList.remove('hidden');
+            }
+
+            function closePaymentModal() {
+                paymentModal.classList.add('hidden');
+                paymentStatus.textContent = '';
+            }
+
+            async function createEntryIntent() {
+                const response = await fetch(`/v1/events/${PAID_EVENT_ID}/entry-intent`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-id': '00000000-0000-0000-0000-000000000001'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Unable to create payment intent.');
+                }
+
+                return response.json();
+            }
+
+            async function confirmPaidEntry() {
+                try {
+                    confirmPaymentButton.disabled = true;
+                    paymentStatus.textContent = 'Preparing secure checkout...';
+
+                    const { client_secret } = await createEntryIntent();
+
+                    paymentStatus.textContent = 'Confirming payment...';
+                    const { error, paymentIntent } = await stripe.confirmCardPayment(client_secret, {
+                        payment_method: {
+                            card: cardElement
+                        }
+                    });
+
+                    if (error) {
+                        throw new Error(error.message || 'Payment failed.');
+                    }
+
+                    if (paymentIntent && paymentIntent.status === 'succeeded') {
+                        paymentStatus.textContent = 'Payment successful! You are entered into the paid event.';
+                        setTimeout(closePaymentModal, 1200);
+                    }
+                } catch (err) {
+                    paymentStatus.textContent = err.message;
+                } finally {
+                    confirmPaymentButton.disabled = false;
+                }
+            }
 
             function getSpeedFromScore(currentScore) {
                 const speedLevel = Math.floor(currentScore / pointsPerSpeedStep);
@@ -242,6 +340,9 @@
             startButton.addEventListener('click', initGame);
             pauseButton.addEventListener('click', togglePause);
             restartButton.addEventListener('click', initGame);
+            joinPaidButton.addEventListener('click', openPaymentModal);
+            cancelPaymentButton.addEventListener('click', closePaymentModal);
+            confirmPaymentButton.addEventListener('click', confirmPaidEntry);
 
             // Keyboard controls
             document.addEventListener('keydown', e => {
